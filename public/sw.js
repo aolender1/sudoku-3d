@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kubik-sudoku-pwa-v1'
+const CACHE_NAME = 'kubik-sudoku-pwa-v2'
 const PRECACHE_URLS = [
   '/',
   '/manifest.webmanifest',
@@ -38,32 +38,33 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(request.url)
   if (url.origin !== self.location.origin) return
 
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const clone = response.clone()
-          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
-          return response
-        })
-        .catch(() => caches.match(request).then((res) => res || caches.match('/')))
-    )
+  // Never intercept Next.js HMR, dev overlay, or internal flight/data endpoints
+  if (
+    url.pathname.startsWith('/_next/webpack-hmr') ||
+    url.pathname.startsWith('/__nextjs') ||
+    url.pathname.includes('hot-update')
+  ) {
     return
   }
 
+  // Network-first with offline cache fallback so code updates always load fresh when online
   event.respondWith(
-    caches.match(request).then((cached) => {
-      const networkFetch = fetch(request)
-        .then((response) => {
-          if (response && response.status === 200) {
-            const clone = response.clone()
-            caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+    fetch(request)
+      .then((response) => {
+        if (response && response.status === 200 && response.type === 'basic') {
+          const clone = response.clone()
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, clone))
+        }
+        return response
+      })
+      .catch(() =>
+        caches.match(request).then((res) => {
+          if (res) return res
+          if (request.mode === 'navigate') {
+            return caches.match('/')
           }
-          return response
+          return Response.error()
         })
-        .catch(() => cached)
-
-      return cached || networkFetch
-    })
+      )
   )
 })

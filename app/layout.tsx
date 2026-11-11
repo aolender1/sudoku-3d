@@ -74,7 +74,7 @@ export default function RootLayout({
           <TooltipProvider>
             <PwaRegister />
             {children}
-            <Toaster position="top-center" />
+            <Toaster position="bottom-right" />
           </TooltipProvider>
         </ThemeProvider>
         {process.env.NODE_ENV === 'production' && <Analytics />}
