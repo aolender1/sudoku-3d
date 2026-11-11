@@ -847,22 +847,9 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     canvas.addEventListener('pointerleave', onPointerLeave)
     canvas.addEventListener('pointerup', onPointerUp)
 
-    // Responsive ResizeObserver
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      const w = Math.max(1, entry.contentRect.width)
-      const h = Math.max(1, entry.contentRect.height)
-      const nextAspect = w / h
-      camera.aspect = nextAspect
-      camera.updateProjectionMatrix()
-      renderer.setSize(w, h, false)
-      if (Math.abs(nextAspect - registry.aspect) > 0.05) {
-        registry.aspect = nextAspect
-        applyCameraPresetTarget(registry, gameRef.current.cameraPreset)
-      }
-    })
-    resizeObserver.observe(container)
+    // Frame-synchronized display sizing (avoids ResizeObserver layout feedback loops)
+    let lastWidth = Math.round(initialWidth)
+    let lastHeight = Math.round(initialHeight)
 
     // 60fps Animation Loop
     let rafId = 0
@@ -870,6 +857,23 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
     const animate = (now: number) => {
       rafId = window.requestAnimationFrame(animate)
+
+      const w = Math.max(1, container.clientWidth)
+      const h = Math.max(1, container.clientHeight)
+      if (w !== lastWidth || h !== lastHeight) {
+        lastWidth = w
+        lastHeight = h
+        const nextAspect = w / h
+        camera.aspect = nextAspect
+        camera.updateProjectionMatrix()
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+        renderer.setSize(w, h, false)
+        if (Math.abs(nextAspect - registry.aspect) > 0.05) {
+          registry.aspect = nextAspect
+          applyCameraPresetTarget(registry, gameRef.current.cameraPreset)
+        }
+      }
+
       const delta = Math.min(0.1, (now - prevTime) / 1000)
       prevTime = now
       const elapsed = now / 1000
@@ -928,7 +932,6 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
     return () => {
       window.cancelAnimationFrame(rafId)
-      resizeObserver.disconnect()
       controls.removeEventListener('start', onControlStart)
       controls.dispose()
       canvas.removeEventListener('pointerdown', onPointerDown)
@@ -1138,7 +1141,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         <canvas
           ref={canvasRef}
           aria-label="Tablero de Sudoku 3D interactivo en Three.js"
-          className="block h-full w-full touch-none outline-none"
+          className="absolute inset-0 block h-full w-full touch-none outline-none"
         />
       )}
 
