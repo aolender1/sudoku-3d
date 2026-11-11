@@ -48,7 +48,7 @@ export default function SudokuPage() {
               ? 'Escenario Sudoku 3D interactivo'
               : 'Tablero Sudoku 2D clásico'
           }
-          className="flex min-w-0 flex-1 flex-col justify-center"
+          className="flex min-w-0 flex-col justify-center lg:flex-1"
         >
           {!game.isReady ? (
             <div className="flex h-[45dvh] min-h-[310px] w-full flex-1 flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 lg:h-full lg:min-h-[540px]">

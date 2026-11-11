@@ -14,7 +14,7 @@ import {
   PlayIcon,
   RotateCcwIcon,
 } from 'lucide-react'
-import { useTheme } from 'next-themes'
+import { useTheme } from '@/components/theme-provider'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -166,17 +166,17 @@ function getCoordTexture(label: string, isDark: boolean): THREE.CanvasTexture | 
   if (cached) return cached
 
   const canvas = document.createElement('canvas')
-  canvas.width = 96
-  canvas.height = 96
+  canvas.width = 128
+  canvas.height = 128
   const ctx = canvas.getContext('2d')
   if (!ctx) return null
 
-  ctx.clearRect(0, 0, 96, 96)
-  ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.78)' : 'rgba(51, 65, 85, 0.78)'
-  ctx.font = '700 44px "JetBrains Mono", ui-monospace, monospace'
+  ctx.clearRect(0, 0, 128, 128)
+  ctx.fillStyle = isDark ? 'rgba(148, 163, 184, 0.82)' : 'rgba(51, 65, 85, 0.82)'
+  ctx.font = '700 58px "JetBrains Mono", ui-monospace, monospace'
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.fillText(label, 48, 50)
+  ctx.fillText(label, 64, 66)
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -278,18 +278,18 @@ function SudokuTile3D({
     if (isGiven) {
       return altQuadrant
         ? isDark
-          ? '#1e293b'
-          : '#edf2f7'
+          ? '#1e2f48'
+          : '#e2e8f0'
         : isDark
-          ? '#233044'
-          : '#f4f7fb'
+          ? '#273954'
+          : '#f1f5f9'
     }
     return altQuadrant
       ? isDark
-        ? '#162032'
+        ? '#152236'
         : '#f8fafc'
       : isDark
-        ? '#1a2538'
+        ? '#1d2d44'
         : '#ffffff'
   }, [
     row,
@@ -338,11 +338,11 @@ function SudokuTile3D({
     )
 
     if (isConflict) {
-      groupRef.current.position.x = x + Math.sin(t * 28) * 0.012
+      groupRef.current.position.x = Math.sin(t * 28) * 0.025
     } else {
       groupRef.current.position.x = THREE.MathUtils.lerp(
         groupRef.current.position.x,
-        x,
+        0,
         damp
       )
     }
@@ -561,9 +561,9 @@ const PRESET_VECTORS: Record<
   CameraPreset,
   { pos: [number, number, number]; target: [number, number, number] }
 > = {
-  isometric: { pos: [0, 11.2, 7.6], target: [0, 0, 0.18] },
-  top: { pos: [0, 14.3, 0.45], target: [0, 0, 0] },
-  angled: { pos: [6.2, 10.1, 7.2], target: [0, 0, 0] },
+  isometric: { pos: [0, 12.2, 8.6], target: [0, -0.05, 0.25] },
+  top: { pos: [0, 15.2, 0.5], target: [0, 0, 0] },
+  angled: { pos: [7.2, 11.4, 8.2], target: [0, -0.05, 0.1] },
 }
 
 function CameraRig({
@@ -574,7 +574,7 @@ function CameraRig({
   resetTick: number
 }) {
   const controlsRef = useRef<OrbitControlsRef>(null)
-  const { camera } = useThree()
+  const { camera, size } = useThree()
   const animatingRef = useRef(true)
   const desiredPos = useRef(new THREE.Vector3(...PRESET_VECTORS.isometric.pos))
   const desiredTarget = useRef(
@@ -583,10 +583,15 @@ function CameraRig({
 
   useEffect(() => {
     const config = PRESET_VECTORS[preset]
-    desiredPos.current.set(...config.pos)
+    const aspect = size.height > 0 ? size.width / size.height : 1.2
+    const portraitZoomOut =
+      aspect < 1.15 ? Math.min(1.62, 1.28 / Math.max(0.55, aspect)) : 1
+    desiredPos.current
+      .set(...config.pos)
+      .multiplyScalar(portraitZoomOut)
     desiredTarget.current.set(...config.target)
     animatingRef.current = true
-  }, [preset, resetTick])
+  }, [preset, resetTick, size.width, size.height])
 
   useFrame((_, delta) => {
     if (!animatingRef.current || !controlsRef.current) return
@@ -610,8 +615,8 @@ function CameraRig({
       enablePan={false}
       enableDamping
       dampingFactor={0.08}
-      minDistance={8.4}
-      maxDistance={19}
+      minDistance={9.5}
+      maxDistance={28}
       minPolarAngle={0.04}
       maxPolarAngle={1.16}
       rotateSpeed={0.72}
@@ -623,16 +628,31 @@ function CameraRig({
   )
 }
 
-function detectWebGL(): boolean {
-  if (typeof window === 'undefined') return true
+function check3DSupport(): {
+  supported: boolean
+  hasWebGL2: boolean
+  hasWebGL1: boolean
+} {
+  if (typeof window === 'undefined') {
+    return { supported: true, hasWebGL2: true, hasWebGL1: true }
+  }
   try {
-    const canvas = document.createElement('canvas')
-    return Boolean(
-      window.WebGL2RenderingContext &&
-        (canvas.getContext('webgl2') || canvas.getContext('webgl'))
+    const p2 = document.createElement('canvas')
+    const hasWebGL2 = Boolean(p2.getContext('webgl2'))
+    if (hasWebGL2) {
+      return { supported: true, hasWebGL2: true, hasWebGL1: true }
+    }
+    const p1 = document.createElement('canvas')
+    const hasWebGL1 = Boolean(
+      p1.getContext('webgl') || p1.getContext('experimental-webgl')
     )
+    return {
+      supported: hasWebGL1,
+      hasWebGL2: false,
+      hasWebGL1,
+    }
   } catch {
-    return false
+    return { supported: false, hasWebGL2: false, hasWebGL1: false }
   }
 }
 
@@ -640,10 +660,21 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme !== 'light'
   const pointerDownRef = useRef({ x: 0, y: 0 })
-  const [webglSupported, setWebglSupported] = useState(true)
+  const [support, setSupport] = useState<{
+    ready: boolean
+    supported: boolean
+    hasWebGL2: boolean
+    hasWebGL1: boolean
+  }>({
+    ready: false,
+    supported: true,
+    hasWebGL2: true,
+    hasWebGL1: true,
+  })
 
   useEffect(() => {
-    setWebglSupported(detectWebGL())
+    const res = check3DSupport()
+    setSupport({ ready: true, ...res })
   }, [])
 
   const selectedLabel = useMemo(() => {
@@ -653,7 +684,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     return `${ROW_LABELS[r]}${c + 1}`
   }, [game.selectedIndex])
 
-  if (!webglSupported) {
+  if (support.ready && !support.supported) {
     return (
       <div className="flex h-full min-h-80 w-full flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 text-center">
         <BoxIcon className="size-8 text-primary" />
@@ -670,7 +701,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
   return (
     <div
-      className="relative flex h-[45dvh] min-h-[310px] w-full flex-1 overflow-hidden rounded-2xl border bg-card shadow-xs sm:h-[52dvh] lg:h-full lg:min-h-[540px]"
+      className="relative flex h-[39dvh] max-h-[360px] min-h-[260px] w-full shrink-0 overflow-hidden rounded-2xl border bg-card shadow-xs sm:h-[48dvh] sm:max-h-[470px] lg:h-full lg:max-h-none lg:min-h-[560px] lg:flex-1"
       onPointerDown={(e) => {
         pointerDownRef.current = { x: e.clientX, y: e.clientY }
       }}
@@ -749,13 +780,30 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         </span>
       </div>
 
-      {/* Three.js Canvas */}
-      <Canvas
-        shadows
-        dpr={[1, 2]}
-        camera={{ position: [0, 11.2, 7.6], fov: 40, near: 0.5, far: 60 }}
-        gl={{ antialias: true, powerPreference: 'high-performance' }}
-      >
+      {/* Three.js Canvas (supports WebGL2 with automatic WebGL1Renderer fallback) */}
+      {support.ready && (
+        <Canvas
+          shadows
+          dpr={[1, 2]}
+          camera={{ position: [0, 12.2, 8.6], fov: 42, near: 0.5, far: 75 }}
+          gl={(defaultProps) => {
+            if (support.hasWebGL2) {
+              return new THREE.WebGLRenderer({
+                ...defaultProps,
+                antialias: true,
+              })
+            }
+            const LegacyWebGL1 = (
+              THREE as unknown as {
+                WebGL1Renderer: typeof THREE.WebGLRenderer
+              }
+            ).WebGL1Renderer
+            return new LegacyWebGL1({
+              ...defaultProps,
+              antialias: true,
+            })
+          }}
+        >
         <color attach="background" args={[isDark ? '#0e1422' : '#eef2f7']} />
         <fog attach="fog" args={[isDark ? '#0e1422' : '#eef2f7', 22, 38]} />
 
@@ -823,7 +871,8 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
               )
             })}
         </group>
-      </Canvas>
+        </Canvas>
+      )}
 
       {/* Pause Veil */}
       {game.isPaused && (
