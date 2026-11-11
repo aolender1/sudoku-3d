@@ -16,7 +16,7 @@ const SudokuBoard3D = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="flex h-[45dvh] min-h-[310px] w-full flex-1 flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 sm:h-[52dvh] lg:h-full lg:min-h-[540px]">
+      <div className="flex h-[45dvh] min-h-[310px] w-full flex-1 flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 sm:h-[52dvh] lg:h-[calc(100dvh-5.5rem)] lg:max-h-[780px] lg:min-h-[420px]">
         <Skeleton className="size-48 rounded-2xl sm:size-64" />
         <p className="font-mono text-xs text-muted-foreground">
           Cargando escena Three.js 3D...
@@ -51,7 +51,7 @@ export default function SudokuPage() {
           className="flex min-w-0 flex-col justify-center lg:flex-1"
         >
           {!game.isReady ? (
-            <div className="flex h-[45dvh] min-h-[310px] w-full flex-1 flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 lg:h-full lg:min-h-[540px]">
+            <div className="flex h-[45dvh] min-h-[310px] w-full flex-1 flex-col items-center justify-center gap-3 rounded-2xl border bg-card p-6 lg:h-[calc(100dvh-5.5rem)] lg:max-h-[780px] lg:min-h-[420px]">
               <Skeleton className="size-52 rounded-2xl sm:size-72" />
               <p className="font-mono text-xs text-muted-foreground">
                 Generando tablero único con sudoku.js...
