@@ -7,7 +7,7 @@
 [![PWA](https://img.shields.io/badge/PWA-Offline_Ready-5A0FC8?style=flat-square)](https://web.dev/progressive-web-apps/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22C55E?style=flat-square)](./LICENSE)
 
-**KUBIK Sudoku** es una aplicación web progresiva (PWA) de Sudoku táctil y espacial construida con **Next.js 16**, **React 19**, **Three.js** y **TypeScript**. Permite alternar en tiempo real entre un **tablero arquitectónico 3D interactivo** con torres volumétricas proporcionales (alturas `1–9`) y una **cuadrícula 2D clásica** de alta legibilidad, manteniendo sincronizados el progreso, las notas de candidatos, el historial de movimientos y el cronómetro.
+**KUBIK Sudoku** es una aplicación web progresiva (PWA) de Sudoku táctil y espacial construida con **Next.js 16**, **React 19**, **Three.js** y **TypeScript**. Soporta tanto el formato clásico **9×9 (cajas 3×3, dígitos `1–9`)** como el formato avanzado **16×16 Hexadoku (cajas 4×4, símbolos `1–9` y `A–G`)**, permitiendo alternar en tiempo real entre un **tablero arquitectónico 3D interactivo** con torres volumétricas proporcionales y una **cuadrícula 2D clásica** de alta legibilidad, manteniendo sincronizados el progreso, las notas de candidatos, el historial de movimientos y el cronómetro.
 
 Repositorio oficial: [github.com/aolender1/sudoku-3d](https://github.com/aolender1/sudoku-3d)
 
@@ -18,8 +18,11 @@ Repositorio oficial: [github.com/aolender1/sudoku-3d](https://github.com/aolende
 - **Doble vista sincronizada en tiempo real (3D y 2D)**
   - **Modo 3D (Three.js nativo):** tablero sobre pedestal biselado con coordenadas `A–I` y `1–9`, bloques volumétricos cuya elevación refleja el valor numérico (`1–9`), iluminación física suave, sombras dinámicas, `OrbitControls` con paneo/rotación/zoom táctil y tres vistas preconfiguradas de cámara (*Isométrica*, *Cenital* e *Inclinada*).
   - **Modo 2D Clásico:** cuadrícula accesible y responsiva con resaltado instantáneo de fila, columna, subcuadrícula `3x3`, celdas con el mismo dígito y conflictos en tiempo real.
-- **Motor algorítmico `sudoku.js` en TypeScript**
-  - Generación y resolución determinista basada en propagación de restricciones y búsqueda heurística (inspirada en el algoritmo de Peter Norvig y `robatron/sudoku.js`).
+- **Modos 9×9 Clásico y 16×16 Hexadoku (4×4)**
+  - **9×9 Clásico:** 81 casillas en 9 bloques `3×3` con dígitos `1–9`.
+  - **16×16 Hexadoku:** 256 casillas en 16 bloques `4×4` con números `1–9` y letras `A–G`, teclado adaptativo y entrada directa por teclado físico (`1–9` y `A–G`).
+- **Motor algorítmico `sudoku.js` en TypeScript (9×9 + 16×16 con máscaras de bits)**
+  - Generación y resolución determinista basada en propagación de restricciones y búsqueda heurística MRV (inspirada en Peter Norvig y `robatron/sudoku.js`), acelerada con aritmética de máscaras de bits de 16 bits (`Uint16Array`) para generar tableros 16×16 con solución única en milisegundos.
 - **Herramientas avanzadas de resolución**
   - **Modo Notas (Lápiz):** máscaras de bits por celda para anotar candidatos `1–9` con limpieza automática en celdas vecinas al confirmar un valor.
   - **Autocandidatos:** cálculo instantáneo de todos los candidatos válidos restantes del tablero.
@@ -36,14 +39,14 @@ Repositorio oficial: [github.com/aolender1/sudoku-3d](https://github.com/aolende
 
 ## Niveles de dificultad
 
-| Nivel | Clave interna | Pistas iniciales (*Givens*) | Perfil de juego |
-| :--- | :--- | :---: | :--- |
-| **Fácil** | `easy` | 62 | Ideal para familiarizarse con la vista espacial 3D |
-| **Medio** | `medium` | 53 | Equilibrio clásico de deducción directa |
-| **Difícil** | `hard` | 44 | Requiere uso sistemático de notas de candidatos |
-| **Muy Difícil** | `very-hard` | 35 | Deducción avanzada e intersecciones por bloques |
-| **Experto** | `insane` | 26 | Nivel maestro de alta exigencia lógica |
-| **Inhumano** | `inhuman` | 17 | Mínimo matemático posible para un Sudoku con solución única |
+| Nivel | Clave interna | Pistas 9×9 (de 81) | Pistas 16×16 (de 256) | Perfil de juego |
+| :--- | :--- | :---: | :---: | :--- |
+| **Fácil** | `easy` | 62 | 176 | Ideal para familiarizarse con la vista espacial 3D |
+| **Medio** | `medium` | 53 | 152 | Equilibrio clásico de deducción directa |
+| **Difícil** | `hard` | 44 | 132 | Requiere uso sistemático de notas de candidatos |
+| **Muy Difícil** | `very-hard` | 35 | 116 | Deducción avanzada e intersecciones por bloques |
+| **Experto** | `insane` | 26 | 102 | Nivel maestro de alta exigencia lógica |
+| **Inhumano** | `inhuman` | 17 | 90 | Desafío extremo con solución única garantizada |
 
 ---
 
@@ -51,12 +54,13 @@ Repositorio oficial: [github.com/aolender1/sudoku-3d](https://github.com/aolende
 
 | Acción | Teclado / Ratón / Táctil |
 | :--- | :--- |
-| **Seleccionar celda** | Clic / toque sobre la celda (3D o 2D) o flechas de dirección (`↑` `↓` `←` `→`) / `W` `A` `S` `D` |
-| **Ingresar número (`1–9`)** | Teclas `1` a `9` (fila superior o teclado numérico) o panel numérico lateral/inferior |
+| **Seleccionar celda** | Clic / toque sobre la celda (3D o 2D) o flechas de dirección (`↑` `↓` `←` `→`) |
+| **Ingresar símbolo (`1–9` / `A–G`)** | Teclas `1` a `9` (y `A` a `G` en modo `16×16`) o teclado interactivo lateral/inferior |
 | **Alternar Modo Notas** | Tecla `N` o botón **Notas** |
+| **Pedir pista lógica** | Tecla `H` o botón **Pista** |
 | **Borrar celda** | `Backspace`, `Delete` o `0` |
-| **Deshacer movimiento** | `Ctrl + Z` / `Cmd + Z` o botón **Deshacer** |
-| **Orbitar / Zoom / Desplazar (3D)** | Arrastrar con clic izquierdo (orbitar), rueda o pellizco (zoom), clic derecho o dos dedos (desplazar) |
+| **Deshacer movimiento** | `Z` / `Ctrl + Z` / `Cmd + Z` o botón **Deshacer** |
+| **Orbitar / Zoom / Desplazar (3D)** | Arrastrar con clic izquierdo (orbitar), rueda o pellizco (zoom), clic derecho o dos dedos (desplazar en `16×16`) |
 
 ---
 

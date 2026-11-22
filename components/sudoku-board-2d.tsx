@@ -4,32 +4,53 @@ import React from 'react'
 import { PlayIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { hasNote, type SudokuGameController } from '@/hooks/use-sudoku-game'
+import { valueToSymbol } from '@/lib/sudoku-js'
 import { cn } from '@/lib/utils'
 
-const ROW_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+const ROW_LETTERS_9 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 
 export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
+  const size = game.boardSize
+  const boxSize = game.boxSize
+  const isHex = size === 16
+
   return (
     <div className="relative flex w-full flex-1 items-center justify-center py-1">
-      <div className="relative aspect-square w-full max-w-[min(100%,460px)] lg:max-w-[520px]">
+      <div
+        className={cn(
+          'relative aspect-square w-full',
+          isHex
+            ? 'max-w-[min(100%,560px)] lg:max-w-[610px]'
+            : 'max-w-[min(100%,460px)] lg:max-w-[520px]'
+        )}
+      >
         {/* Subtle Coordinate Headers */}
         <div
-          className="mb-1 hidden grid-cols-9 px-0.5 text-center font-mono text-[11px] font-medium text-muted-foreground sm:grid"
+          className="mb-1 hidden px-0.5 text-center font-mono text-[10px] font-medium text-muted-foreground sm:grid"
+          style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}
           aria-hidden="true"
         >
-          {Array.from({ length: 9 }, (_, c) => (
+          {Array.from({ length: size }, (_, c) => (
             <span key={c}>{c + 1}</span>
           ))}
         </div>
 
         <div
           role="grid"
-          aria-label="Tablero de Sudoku clásico 9 por 9"
-          className="relative grid aspect-square w-full grid-cols-9 grid-rows-9 overflow-hidden rounded-xl border-2 border-grid-strong bg-card shadow-sm"
+          aria-label={
+            isHex
+              ? 'Tablero de Sudoku Hexadoku 16 por 16 con cajas 4 por 4'
+              : 'Tablero de Sudoku clásico 9 por 9'
+          }
+          style={{
+            gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))`,
+            gridTemplateRows: `repeat(${size}, minmax(0, 1fr))`,
+          }}
+          className="relative grid aspect-square w-full overflow-hidden rounded-xl border-2 border-grid-strong bg-card shadow-sm"
         >
           {game.board.map((digit, idx) => {
-            const row = Math.floor(idx / 9)
-            const col = idx % 9
+            const row = Math.floor(idx / size)
+            const col = idx % size
             const isGiven = game.initialBoard[idx] !== 0
             const isSelected = game.selectedIndex === idx
             const isPeer = game.peerSet.has(idx)
@@ -42,21 +63,24 @@ export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
               !isSelected
             const notesMask = game.notes[idx]
             const altBox =
-              (Math.floor(row / 3) + Math.floor(col / 3)) % 2 === 1
+              (Math.floor(row / boxSize) + Math.floor(col / boxSize)) % 2 === 1
 
             const rightBorder =
-              col === 2 || col === 5
+              (col + 1) % boxSize === 0 && col < size - 1
                 ? 'border-r-2 border-r-grid-strong'
-                : col < 8
+                : col < size - 1
                   ? 'border-r border-r-border'
                   : ''
 
             const bottomBorder =
-              row === 2 || row === 5
+              (row + 1) % boxSize === 0 && row < size - 1
                 ? 'border-b-2 border-b-grid-strong'
-                : row < 8
+                : row < size - 1
                   ? 'border-b border-b-border'
                   : ''
+
+            const symbol = digit !== 0 ? valueToSymbol(digit) : ''
+            const rowLabel = isHex ? `F${row + 1}` : ROW_LETTERS_9[row]
 
             return (
               <button
@@ -64,9 +88,9 @@ export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
                 type="button"
                 role="gridcell"
                 aria-selected={isSelected}
-                aria-label={`Fila ${ROW_LETTERS[row]}, Columna ${col + 1}${
+                aria-label={`Fila ${rowLabel}, Columna ${col + 1}${
                   digit !== 0
-                    ? `, valor ${digit}${isGiven ? ' fijo' : ''}${isConflict ? ', en conflicto' : ''}`
+                    ? `, valor ${symbol}${isGiven ? ' fijo' : ''}${isConflict ? ', en conflicto' : ''}`
                     : ', vacía'
                 }`}
                 onClick={() => game.selectCell(idx)}
@@ -89,16 +113,19 @@ export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
                   <>
                     <span
                       className={cn(
-                        'text-lg leading-none sm:text-2xl',
+                        'leading-none',
+                        isHex
+                          ? 'text-[11px] sm:text-sm md:text-[15px]'
+                          : 'text-lg sm:text-2xl',
                         isGiven ? 'font-bold' : 'font-semibold',
                         !isSelected && isConflict && 'text-destructive',
                         !isSelected && !isConflict && isGiven && 'text-foreground',
                         !isSelected && !isConflict && !isGiven && 'text-primary'
                       )}
                     >
-                      {digit}
+                      {symbol}
                     </span>
-                    {isGiven && (
+                    {isGiven && !isHex && (
                       <span
                         aria-hidden="true"
                         className={cn(
@@ -113,9 +140,18 @@ export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
                 ) : notesMask !== 0 ? (
                   <span
                     aria-hidden="true"
-                    className="grid size-full grid-cols-3 grid-rows-3 p-0.5 text-[9px] leading-none sm:text-[11px]"
+                    style={{
+                      gridTemplateColumns: `repeat(${boxSize}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${boxSize}, minmax(0, 1fr))`,
+                    }}
+                    className={cn(
+                      'grid size-full leading-none',
+                      isHex
+                        ? 'p-[1px] text-[5.5px] sm:text-[7px]'
+                        : 'p-0.5 text-[9px] sm:text-[11px]'
+                    )}
                   >
-                    {Array.from({ length: 9 }, (_, nIdx) => {
+                    {Array.from({ length: size }, (_, nIdx) => {
                       const d = nIdx + 1
                       const active = hasNote(notesMask, d)
                       const isMatch =
@@ -136,7 +172,7 @@ export function SudokuBoard2D({ game }: { game: SudokuGameController }) {
                               'bg-highlight/35 font-bold text-foreground'
                           )}
                         >
-                          {active ? d : ''}
+                          {active ? valueToSymbol(d) : ''}
                         </span>
                       )
                     })}

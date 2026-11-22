@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useMemo } from 'react'
 import Image from 'next/image'
 import {
   BoxIcon,
@@ -26,13 +26,12 @@ import {
 } from '@/components/ui/select'
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group'
 import { usePwaInstall } from '@/components/pwa-register'
-import { DIFFICULTY_LEVELS, type DifficultyKey } from '@/lib/sudoku-js'
+import {
+  getDifficultyLevels,
+  type BoardSize,
+  type DifficultyKey,
+} from '@/lib/sudoku-js'
 import type { SudokuGameController, ViewMode } from '@/hooks/use-sudoku-game'
-
-const SELECT_ITEMS = DIFFICULTY_LEVELS.map((lvl) => ({
-  value: lvl.key,
-  label: `${lvl.shortLabel} (${lvl.givens})`,
-}))
 
 interface SudokuHeaderProps {
   game: SudokuGameController
@@ -42,6 +41,20 @@ interface SudokuHeaderProps {
 export function SudokuHeader({ game, onOpenHelp }: SudokuHeaderProps) {
   const { resolvedTheme, setTheme } = useTheme()
   const { isStandalone, promptInstall } = usePwaInstall()
+
+  const difficultyLevels = useMemo(
+    () => getDifficultyLevels(game.boardSize),
+    [game.boardSize]
+  )
+
+  const selectItems = useMemo(
+    () =>
+      difficultyLevels.map((lvl) => ({
+        value: lvl.key,
+        label: `${lvl.shortLabel} (${lvl.givens})`,
+      })),
+    [difficultyLevels]
+  )
 
   const handleInstallClick = async () => {
     const result = await promptInstall()
@@ -73,54 +86,97 @@ export function SudokuHeader({ game, onOpenHelp }: SudokuHeaderProps) {
                 PWA
               </span>
             </div>
-            <p className="hidden text-[11px] text-muted-foreground sm:block">
-              Sudoku 3D Three.js &amp; 2D Clásico
+            <p className="hidden text-[11px] text-muted-foreground lg:block">
+              Sudoku 3D &amp; 2D · 9×9 y 16×16
             </p>
           </div>
         </div>
 
-        {/* Center Switcher: 3D vs 2D Classic */}
-        <div className="order-3 flex w-full items-center justify-between gap-2 sm:order-2 sm:w-auto sm:justify-center">
-          <ToggleGroup
-            variant="outline"
-            size="sm"
-            spacing={0}
-            value={[game.mode]}
-            onValueChange={(vals) => {
-              const next = vals[0] as ViewMode | undefined
-              if (next) game.setMode(next)
-            }}
-            aria-label="Modo de visualización del tablero"
-          >
-            <ToggleGroupItem
-              value="3d"
-              aria-label="Modo 3D con Three.js"
-              className="px-2.5 text-xs font-medium data-pressed:bg-primary data-pressed:text-primary-foreground"
+        {/* Center Switchers: 3D/2D + 9x9/16x16 + Difficulty */}
+        <div className="order-3 flex w-full flex-wrap items-center justify-between gap-1.5 sm:order-2 sm:w-auto sm:justify-center sm:gap-2">
+          <div className="flex items-center gap-1.5">
+            <ToggleGroup
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={[game.mode]}
+              onValueChange={(vals) => {
+                const next = vals[0] as ViewMode | undefined
+                if (next) game.setMode(next)
+              }}
+              aria-label="Modo de visualización del tablero"
             >
-              <BoxIcon data-icon="inline-start" />
-              3D Three.js
-            </ToggleGroupItem>
-            <ToggleGroupItem
-              value="2d"
-              aria-label="Modo 2D clásico"
-              className="px-2.5 text-xs font-medium data-pressed:bg-primary data-pressed:text-primary-foreground"
+              <ToggleGroupItem
+                value="3d"
+                aria-label="Modo 3D con Three.js"
+                className="px-2 text-xs font-medium data-pressed:bg-primary data-pressed:text-primary-foreground sm:px-2.5"
+              >
+                <BoxIcon data-icon="inline-start" />
+                <span>3D</span>
+                <span className="hidden xl:inline"> Three.js</span>
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="2d"
+                aria-label="Modo 2D clásico"
+                className="px-2 text-xs font-medium data-pressed:bg-primary data-pressed:text-primary-foreground sm:px-2.5"
+              >
+                <Grid3x3Icon data-icon="inline-start" />
+                <span>2D</span>
+                <span className="hidden xl:inline"> Clásico</span>
+              </ToggleGroupItem>
+            </ToggleGroup>
+
+            <ToggleGroup
+              variant="outline"
+              size="sm"
+              spacing={0}
+              value={[String(game.boardSize)]}
+              onValueChange={(vals) => {
+                const next = vals[0]
+                if (next === '9' || next === '16') {
+                  const nextSize = Number(next) as BoardSize
+                  if (nextSize !== game.boardSize) {
+                    game.changeBoardSize(nextSize)
+                    toast.info(
+                      nextSize === 16
+                        ? 'Modo 16×16 Hexadoku (cajas 4×4 · símbolos 1–9 y A–G)'
+                        : 'Modo 9×9 Clásico (cajas 3×3 · dígitos 1–9)'
+                    )
+                  }
+                }
+              }}
+              aria-label="Tamaño del tablero de Sudoku"
             >
-              <Grid3x3Icon data-icon="inline-start" />
-              2D Clásico
-            </ToggleGroupItem>
-          </ToggleGroup>
+              <ToggleGroupItem
+                value="9"
+                aria-label="Sudoku clásico 9 por 9"
+                className="px-2 font-mono text-xs font-semibold data-pressed:bg-primary data-pressed:text-primary-foreground"
+              >
+                9×9
+              </ToggleGroupItem>
+              <ToggleGroupItem
+                value="16"
+                aria-label="Sudoku Hexadoku 16 por 16 con 1-9 y A-G"
+                className="px-2 font-mono text-xs font-semibold data-pressed:bg-primary data-pressed:text-primary-foreground"
+              >
+                16×16
+              </ToggleGroupItem>
+            </ToggleGroup>
+          </div>
 
           {/* Difficulty Selector + New Game */}
           <div className="flex items-center gap-1.5">
             <Select
-              items={SELECT_ITEMS}
+              items={selectItems}
               value={game.difficulty}
               onValueChange={(val) => {
                 if (val) {
                   game.startNewGame(val as DifficultyKey)
-                  const meta = DIFFICULTY_LEVELS.find((d) => d.key === val)
+                  const meta = difficultyLevels.find((d) => d.key === val)
                   if (meta) {
-                    toast.info(`Nuevo Sudoku: ${meta.label} (${meta.givens} pistas)`)
+                    toast.info(
+                      `Nuevo Sudoku ${game.boardSize}×${game.boardSize}: ${meta.label} (${meta.givens} pistas)`
+                    )
                   }
                 }
               }}
@@ -128,13 +184,13 @@ export function SudokuHeader({ game, onOpenHelp }: SudokuHeaderProps) {
               <SelectTrigger
                 size="sm"
                 aria-label="Seleccionar nivel de dificultad"
-                className="min-w-29 font-medium sm:min-w-34"
+                className="min-w-28 font-medium sm:min-w-32"
               >
                 <SelectValue placeholder="Nivel" />
               </SelectTrigger>
               <SelectContent alignItemWithTrigger={false} side="bottom" align="end">
                 <SelectGroup>
-                  {DIFFICULTY_LEVELS.map((lvl) => (
+                  {difficultyLevels.map((lvl) => (
                     <SelectItem key={lvl.key} value={lvl.key}>
                       <span className="flex items-center justify-between gap-3">
                         <span className="font-medium">{lvl.label}</span>
@@ -153,12 +209,14 @@ export function SudokuHeader({ game, onOpenHelp }: SudokuHeaderProps) {
               size="sm"
               onClick={() => {
                 game.startNewGame(game.difficulty)
-                toast.info('Nuevo tablero generado')
+                toast.info(
+                  `Nuevo tablero ${game.boardSize}×${game.boardSize} generado`
+                )
               }}
               title="Generar nuevo Sudoku en este nivel"
             >
               <RefreshCwIcon data-icon="inline-start" />
-              <span className="hidden md:inline">Nuevo</span>
+              <span className="hidden xl:inline">Nuevo</span>
             </Button>
           </div>
         </div>
@@ -182,7 +240,9 @@ export function SudokuHeader({ game, onOpenHelp }: SudokuHeaderProps) {
             size="icon-sm"
             onClick={() => game.setSoundEnabled(!game.soundEnabled)}
             aria-label={
-              game.soundEnabled ? 'Silenciar efectos de sonido' : 'Activar efectos de sonido'
+              game.soundEnabled
+                ? 'Silenciar efectos de sonido'
+                : 'Activar efectos de sonido'
             }
             title={game.soundEnabled ? 'Sonido activado' : 'Sonido silenciado'}
           >

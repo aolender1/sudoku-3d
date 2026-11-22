@@ -20,17 +20,103 @@ import {
   type CameraPreset,
   type SudokuGameController,
 } from '@/hooks/use-sudoku-game'
+import { valueToSymbol, type BoardSize } from '@/lib/sudoku-js'
 import { cn } from '@/lib/utils'
 
-const CELL_STEP = 1.02
-const BOX_GAP = 0.18
 const BASE_TILE_HEIGHT = 0.24
+const ROW_LABELS_9 = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
 
-function getCellCoord(rc: number): number {
-  return (rc - 4) * CELL_STEP + (Math.floor(rc / 3) - 1) * BOX_GAP
+interface BoardGeometrySpec {
+  size: BoardSize
+  boxSize: 3 | 4
+  totalCells: number
+  cellStep: number
+  boxGap: number
+  tileSize: number
+  tileRadius: number
+  tileSegments: number
+  labelSize: number
+  ringInner: number
+  ringOuter: number
+  subPlateSpan: number
+  plinthSize: number
+  rimSize: number
+  coordOffset: number
+  coordPlaneSize: number
+  camScale: number
+  minDistance: number
+  maxDistance: number
+  shadowExtent: number
+  fogNear: number
+  fogFar: number
 }
 
-const ROW_LABELS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I']
+function getBoardGeometrySpec(size: BoardSize): BoardGeometrySpec {
+  if (size === 16) {
+    return {
+      size: 16,
+      boxSize: 4,
+      totalCells: 256,
+      cellStep: 0.78,
+      boxGap: 0.24,
+      tileSize: 0.7,
+      tileRadius: 0.06,
+      tileSegments: 2,
+      labelSize: 0.65,
+      ringInner: 0.34,
+      ringOuter: 0.38,
+      subPlateSpan: 3.16,
+      plinthSize: 14.6,
+      rimSize: 14.74,
+      coordOffset: 6.92,
+      coordPlaneSize: 0.38,
+      camScale: 1.26,
+      minDistance: 6.5,
+      maxDistance: 36,
+      shadowExtent: 10,
+      fogNear: 30,
+      fogFar: 58,
+    }
+  }
+  return {
+    size: 9,
+    boxSize: 3,
+    totalCells: 81,
+    cellStep: 1.02,
+    boxGap: 0.18,
+    tileSize: 0.92,
+    tileRadius: 0.08,
+    tileSegments: 3,
+    labelSize: 0.78,
+    ringInner: 0.45,
+    ringOuter: 0.5,
+    subPlateSpan: 3.12,
+    plinthSize: 10.6,
+    rimSize: 10.72,
+    coordOffset: 4.96,
+    coordPlaneSize: 0.42,
+    camScale: 1,
+    minDistance: 8.8,
+    maxDistance: 26,
+    shadowExtent: 7,
+    fogNear: 22,
+    fogFar: 40,
+  }
+}
+
+function getCellCoord(rc: number, spec: BoardGeometrySpec): number {
+  const halfCells = (spec.size - 1) / 2
+  const halfBoxes = (spec.boxSize - 1) / 2
+  return (
+    (rc - halfCells) * spec.cellStep +
+    (Math.floor(rc / spec.boxSize) - halfBoxes) * spec.boxGap
+  )
+}
+
+function getBoxCenterCoord(boxIdx: number, spec: BoardGeometrySpec): number {
+  const halfBoxes = (spec.boxSize - 1) / 2
+  return (boxIdx - halfBoxes) * (spec.boxSize * spec.cellStep + spec.boxGap)
+}
 
 const PRESET_VECTORS: Record<
   CameraPreset,
@@ -44,6 +130,7 @@ const PRESET_VECTORS: Record<
 const textureCache = new Map<string, THREE.CanvasTexture>()
 
 interface LabelTextureParams {
+  boardSize: BoardSize
   digit: number
   notesMask: number
   isGiven: boolean
@@ -58,6 +145,7 @@ function getTileLabelTexture(
   params: LabelTextureParams
 ): THREE.CanvasTexture | null {
   const {
+    boardSize,
     digit,
     notesMask,
     isGiven,
@@ -79,7 +167,7 @@ function getTileLabelTexture(
       ? highlightNoteDigit
       : 0
 
-  const key = `${digit}|${notesMask}|${isGiven ? 1 : 0}|${isConflict ? 1 : 0}|${isSelected ? 1 : 0}|${isSameDigit ? 1 : 0}|${activeNoteHighlight}|${isDark ? 1 : 0}`
+  const key = `${boardSize}|${digit}|${notesMask}|${isGiven ? 1 : 0}|${isConflict ? 1 : 0}|${isSelected ? 1 : 0}|${isSameDigit ? 1 : 0}|${activeNoteHighlight}|${isDark ? 1 : 0}`
   const cached = textureCache.get(key)
   if (cached) return cached
 
@@ -92,6 +180,7 @@ function getTileLabelTexture(
   ctx.clearRect(0, 0, 256, 256)
 
   if (digit > 0) {
+    const symbol = valueToSymbol(digit)
     let textColor = isDark ? '#f1f5f9' : '#0f172a'
     if (isConflict) {
       textColor = isDark ? '#fca5a5' : '#dc2626'
@@ -102,12 +191,13 @@ function getTileLabelTexture(
     }
 
     ctx.fillStyle = textColor
-    ctx.font = `${isGiven ? 700 : 600} 150px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace`
+    const fontSize = boardSize === 16 ? 176 : 150
+    ctx.font = `${isGiven ? 700 : 600} ${fontSize}px "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace`
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
-    ctx.fillText(String(digit), 128, 134)
+    ctx.fillText(symbol, 128, 134)
 
-    if (isGiven) {
+    if (isGiven && boardSize === 9) {
       ctx.beginPath()
       ctx.arc(214, 42, 9, 0, Math.PI * 2)
       ctx.fillStyle = isSelected
@@ -118,7 +208,7 @@ function getTileLabelTexture(
       ctx.fill()
     } else if (isConflict) {
       ctx.beginPath()
-      ctx.arc(214, 42, 11, 0, Math.PI * 2)
+      ctx.arc(214, 42, 12, 0, Math.PI * 2)
       ctx.fillStyle = isDark ? '#f87171' : '#dc2626'
       ctx.fill()
     }
@@ -126,16 +216,24 @@ function getTileLabelTexture(
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
 
-    for (let d = 1; d <= 9; d++) {
+    const boxSize = boardSize === 16 ? 4 : 3
+    for (let d = 1; d <= boardSize; d++) {
       if (!hasNote(notesMask, d)) continue
-      const nr = Math.floor((d - 1) / 3)
-      const nc = (d - 1) % 3
-      const cx = 48 + nc * 80
-      const cy = 50 + nr * 78
+      const nr = Math.floor((d - 1) / boxSize)
+      const nc = (d - 1) % boxSize
+      const cx = boardSize === 16 ? 35 + nc * 62 : 48 + nc * 80
+      const cy = boardSize === 16 ? 37 + nr * 60 : 50 + nr * 78
 
       if (activeNoteHighlight === d) {
+        const boxHalf = boardSize === 16 ? 24 : 28
         ctx.beginPath()
-        ctx.roundRect(cx - 28, cy - 28, 56, 56, 12)
+        ctx.roundRect(
+          cx - boxHalf,
+          cy - boxHalf,
+          boxHalf * 2,
+          boxHalf * 2,
+          boardSize === 16 ? 8 : 12
+        )
         ctx.fillStyle = isSelected
           ? 'rgba(255,255,255,0.28)'
           : isDark
@@ -147,17 +245,17 @@ function getTileLabelTexture(
           : isDark
             ? '#fde68a'
             : '#b45309'
-        ctx.font = '700 48px "JetBrains Mono", ui-monospace, monospace'
+        ctx.font = `700 ${boardSize === 16 ? 38 : 48}px "JetBrains Mono", ui-monospace, monospace`
       } else {
         ctx.fillStyle = isSelected
           ? 'rgba(255,255,255,0.92)'
           : isDark
             ? '#cbd5e1'
             : '#334155'
-        ctx.font = '600 44px "JetBrains Mono", ui-monospace, monospace'
+        ctx.font = `600 ${boardSize === 16 ? 35 : 44}px "JetBrains Mono", ui-monospace, monospace`
       }
 
-      ctx.fillText(String(d), cx, cy + 2)
+      ctx.fillText(valueToSymbol(d), cx, cy + 2)
     }
   }
 
@@ -189,7 +287,8 @@ function getCoordTexture(
   ctx.fillStyle = isDark
     ? 'rgba(148, 163, 184, 0.85)'
     : 'rgba(51, 65, 85, 0.85)'
-  ctx.font = '700 58px "JetBrains Mono", ui-monospace, monospace'
+  const fontSize = label.length > 1 ? 48 : 58
+  ctx.font = `700 ${fontSize}px "JetBrains Mono", ui-monospace, monospace`
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
   ctx.fillText(label, 64, 66)
@@ -228,6 +327,7 @@ interface TileEntry {
   index: number
   row: number
   col: number
+  baseX: number
   altQuadrant: boolean
   group: THREE.Group
   tileMesh: THREE.Mesh<RoundedBoxGeometry, THREE.MeshStandardMaterial>
@@ -241,6 +341,8 @@ interface TileEntry {
 }
 
 interface SceneRegistry {
+  boardSize: BoardSize
+  spec: BoardGeometrySpec
   scene: THREE.Scene
   camera: THREE.PerspectiveCamera
   renderer: THREE.WebGLRenderer
@@ -250,7 +352,10 @@ interface SceneRegistry {
   rimLight: THREE.DirectionalLight
   plinthMat: THREE.MeshStandardMaterial
   rimMat: THREE.MeshStandardMaterial
-  subPlateMats: { alt: THREE.MeshStandardMaterial; std: THREE.MeshStandardMaterial }
+  subPlateMats: {
+    alt: THREE.MeshStandardMaterial
+    std: THREE.MeshStandardMaterial
+  }
   rowCoordMeshes: Array<{ label: string; mat: THREE.MeshBasicMaterial }>
   colCoordMeshes: Array<{ label: string; mat: THREE.MeshBasicMaterial }>
   tilesGroup: THREE.Group
@@ -272,7 +377,9 @@ function applyCameraPresetTarget(
   const config = PRESET_VECTORS[preset]
   const portraitZoomOut =
     reg.aspect < 1.15 ? Math.min(1.62, 1.28 / Math.max(0.55, reg.aspect)) : 1
-  reg.desiredCamPos.set(...config.pos).multiplyScalar(portraitZoomOut)
+  reg.desiredCamPos
+    .set(...config.pos)
+    .multiplyScalar(reg.spec.camScale * portraitZoomOut)
   reg.desiredCamTarget.set(...config.target)
   reg.animatingCamera = true
 }
@@ -280,6 +387,7 @@ function applyCameraPresetTarget(
 function updateSingleTileVisuals(
   tile: TileEntry,
   params: {
+    boardSize: BoardSize
     digit: number
     notesMask: number
     isGiven: boolean
@@ -295,6 +403,7 @@ function updateSingleTileVisuals(
   }
 ): void {
   const {
+    boardSize,
     digit,
     notesMask,
     isGiven,
@@ -367,10 +476,11 @@ function updateSingleTileVisuals(
   mat.roughness = isSelected ? 0.24 : isGiven ? 0.34 : 0.42
   mat.metalness = isDark ? 0.18 : 0.06
 
-  // Target Y scale for smooth 3D tower animation
+  // Target Y scale for smooth 3D tower animation (1-9 or 1-G)
   let targetHeight = BASE_TILE_HEIGHT
   if (reliefMode && digit > 0) {
-    targetHeight = 0.22 + digit * 0.088
+    targetHeight =
+      boardSize === 16 ? 0.2 + digit * 0.056 : 0.22 + digit * 0.088
   } else if (digit > 0) {
     targetHeight = isGiven ? 0.3 : 0.26
   }
@@ -381,8 +491,9 @@ function updateSingleTileVisuals(
   }
   tile.targetScaleY = targetHeight / BASE_TILE_HEIGHT
 
-  // Top label texture (digit or 3x3 candidate notes)
+  // Top label texture (symbol or 3x3 / 4x4 candidate notes)
   const labelTex = getTileLabelTexture({
+    boardSize,
     digit,
     notesMask,
     isGiven,
@@ -410,6 +521,7 @@ function updateSingleTileVisuals(
 export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
   const { resolvedTheme } = useTheme()
   const isDark = resolvedTheme !== 'light'
+  const boardSize = game.boardSize
 
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -436,25 +548,29 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     setSupport({ ready: true, ...res })
   }, [])
 
-  // Build Three.js scene once when WebGL support is confirmed
+  // Build Three.js scene whenever WebGL support is confirmed or board size (9x9 / 16x16) changes
   useEffect(() => {
     if (!support.ready || !support.supported) return
     const container = containerRef.current
     const canvas = canvasRef.current
     if (!container || !canvas) return
 
+    const spec = getBoardGeometrySpec(boardSize)
+
     const scene = new THREE.Scene()
     const initialBg = isDarkRef.current ? '#0e1422' : '#eef2f7'
     scene.background = new THREE.Color(initialBg)
-    scene.fog = new THREE.Fog(initialBg, 22, 40)
+    scene.fog = new THREE.Fog(initialBg, spec.fogNear, spec.fogFar)
 
     const rect = container.getBoundingClientRect()
     const initialWidth = Math.max(1, rect.width)
     const initialHeight = Math.max(1, rect.height)
     const initialAspect = initialWidth / initialHeight
 
-    const camera = new THREE.PerspectiveCamera(42, initialAspect, 0.5, 75)
-    camera.position.set(...PRESET_VECTORS.isometric.pos)
+    const camera = new THREE.PerspectiveCamera(42, initialAspect, 0.5, 110)
+    camera.position
+      .set(...PRESET_VECTORS.isometric.pos)
+      .multiplyScalar(spec.camScale)
 
     let renderer: THREE.WebGLRenderer
     if (support.hasWebGL2) {
@@ -479,11 +595,11 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     renderer.shadowMap.type = THREE.PCFSoftShadowMap
 
     const controls = new OrbitControls(camera, canvas)
-    controls.enablePan = false
+    controls.enablePan = boardSize === 16
     controls.enableDamping = true
     controls.dampingFactor = 0.08
-    controls.minDistance = 8.8
-    controls.maxDistance = 26
+    controls.minDistance = spec.minDistance
+    controls.maxDistance = spec.maxDistance
     controls.minPolarAngle = 0.04
     controls.maxPolarAngle = 1.16
     controls.rotateSpeed = 0.72
@@ -500,13 +616,17 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       0xffffff,
       isDarkRef.current ? 1.35 : 1.15
     )
-    keyLight.position.set(8, 16, 10)
+    keyLight.position.set(
+      8 * spec.camScale,
+      16 * spec.camScale,
+      10 * spec.camScale
+    )
     keyLight.castShadow = true
     keyLight.shadow.mapSize.set(1024, 1024)
-    keyLight.shadow.camera.left = -7
-    keyLight.shadow.camera.right = 7
-    keyLight.shadow.camera.top = 7
-    keyLight.shadow.camera.bottom = -7
+    keyLight.shadow.camera.left = -spec.shadowExtent
+    keyLight.shadow.camera.right = spec.shadowExtent
+    keyLight.shadow.camera.top = spec.shadowExtent
+    keyLight.shadow.camera.bottom = -spec.shadowExtent
     keyLight.shadow.bias = -0.0005
     scene.add(keyLight)
 
@@ -514,13 +634,23 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       isDarkRef.current ? '#60a5fa' : '#93c5fd',
       isDarkRef.current ? 0.55 : 0.4
     )
-    rimLight.position.set(-8, 9, -7)
+    rimLight.position.set(
+      -8 * spec.camScale,
+      9 * spec.camScale,
+      -7 * spec.camScale
+    )
     scene.add(rimLight)
 
     // Sculpted Board Pedestal
     const disposables: Array<{ dispose: () => void }> = []
 
-    const plinthGeo = new RoundedBoxGeometry(10.6, 0.56, 10.6, 4, 0.22)
+    const plinthGeo = new RoundedBoxGeometry(
+      spec.plinthSize,
+      0.56,
+      spec.plinthSize,
+      4,
+      0.22
+    )
     const plinthMat = new THREE.MeshStandardMaterial({
       color: isDarkRef.current ? '#0b101d' : '#cbd5e1',
       roughness: 0.45,
@@ -532,7 +662,13 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     scene.add(plinthMesh)
     disposables.push(plinthGeo, plinthMat)
 
-    const rimGeo = new RoundedBoxGeometry(10.72, 0.14, 10.72, 4, 0.06)
+    const rimGeo = new RoundedBoxGeometry(
+      spec.rimSize,
+      0.14,
+      spec.rimSize,
+      4,
+      0.06
+    )
     const rimMat = new THREE.MeshStandardMaterial({
       color: isDarkRef.current ? '#1d4ed8' : '#94a3b8',
       emissive: isDarkRef.current ? '#1d4ed8' : '#000000',
@@ -545,8 +681,14 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     scene.add(rimMesh)
     disposables.push(rimGeo, rimMat)
 
-    // 9 Recessed 3x3 Sub-Plates
-    const subPlateGeo = new RoundedBoxGeometry(3.12, 0.08, 3.12, 3, 0.04)
+    // Recessed Sub-Plates (9 plates of 3x3, or 16 plates of 4x4)
+    const subPlateGeo = new RoundedBoxGeometry(
+      spec.subPlateSpan,
+      0.08,
+      spec.subPlateSpan,
+      3,
+      0.04
+    )
     const subPlateMatAlt = new THREE.MeshStandardMaterial({
       color: isDarkRef.current ? '#0f172a' : '#dbe3ee',
       roughness: 0.55,
@@ -559,10 +701,10 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     })
     disposables.push(subPlateGeo, subPlateMatAlt, subPlateMatStd)
 
-    for (let br = 0; br < 3; br++) {
-      for (let bc = 0; bc < 3; bc++) {
-        const cx = (bc - 1) * (3 * CELL_STEP + BOX_GAP)
-        const cz = (br - 1) * (3 * CELL_STEP + BOX_GAP)
+    for (let br = 0; br < spec.boxSize; br++) {
+      for (let bc = 0; bc < spec.boxSize; bc++) {
+        const cx = getBoxCenterCoord(bc, spec)
+        const cz = getBoxCenterCoord(br, spec)
         const isAlt = (br + bc) % 2 === 1
         const subMesh = new THREE.Mesh(
           subPlateGeo,
@@ -574,8 +716,11 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       }
     }
 
-    // Engraved Row (A-I) & Column (1-9) Coordinate Plates
-    const coordGeo = new THREE.PlaneGeometry(0.42, 0.42)
+    // Engraved Row & Column Coordinate Plates
+    const coordGeo = new THREE.PlaneGeometry(
+      spec.coordPlaneSize,
+      spec.coordPlaneSize
+    )
     disposables.push(coordGeo)
 
     const rowCoordMeshes: Array<{ label: string; mat: THREE.MeshBasicMaterial }> =
@@ -583,21 +728,22 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     const colCoordMeshes: Array<{ label: string; mat: THREE.MeshBasicMaterial }> =
       []
 
-    ROW_LABELS.forEach((label, r) => {
+    for (let r = 0; r < spec.size; r++) {
+      const label = spec.size === 16 ? String(r + 1) : ROW_LABELS_9[r]
       const mat = new THREE.MeshBasicMaterial({
         map: getCoordTexture(label, isDarkRef.current),
         transparent: true,
         depthWrite: false,
       })
       const m = new THREE.Mesh(coordGeo, mat)
-      m.position.set(-4.96, 0.2, getCellCoord(r))
+      m.position.set(-spec.coordOffset, 0.2, getCellCoord(r, spec))
       m.rotation.set(-Math.PI / 2, 0, 0)
       scene.add(m)
       rowCoordMeshes.push({ label, mat })
       disposables.push(mat)
-    })
+    }
 
-    for (let c = 0; c < 9; c++) {
+    for (let c = 0; c < spec.size; c++) {
       const label = String(c + 1)
       const mat = new THREE.MeshBasicMaterial({
         map: getCoordTexture(label, isDarkRef.current),
@@ -605,23 +751,30 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         depthWrite: false,
       })
       const m = new THREE.Mesh(coordGeo, mat)
-      m.position.set(getCellCoord(c), 0.2, 4.96)
+      m.position.set(getCellCoord(c, spec), 0.2, spec.coordOffset)
       m.rotation.set(-Math.PI / 2, 0, 0)
       scene.add(m)
       colCoordMeshes.push({ label, mat })
       disposables.push(mat)
     }
 
-    // 81 Interactive 3D Sudoku Tiles
+    // Interactive 3D Sudoku Tiles (81 for 9x9 or 256 for 16x16)
     const sharedTileGeo = new RoundedBoxGeometry(
-      0.92,
+      spec.tileSize,
       BASE_TILE_HEIGHT,
-      0.92,
-      3,
-      0.08
+      spec.tileSize,
+      spec.tileSegments,
+      spec.tileRadius
     )
-    const sharedLabelGeo = new THREE.PlaneGeometry(0.78, 0.78)
-    const sharedRingGeo = new THREE.RingGeometry(0.45, 0.5, 32)
+    const sharedLabelGeo = new THREE.PlaneGeometry(
+      spec.labelSize,
+      spec.labelSize
+    )
+    const sharedRingGeo = new THREE.RingGeometry(
+      spec.ringInner,
+      spec.ringOuter,
+      28
+    )
     disposables.push(sharedTileGeo, sharedLabelGeo, sharedRingGeo)
 
     const tilesGroup = new THREE.Group()
@@ -630,14 +783,17 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     const tiles: TileEntry[] = []
     const raycastTargets: THREE.Mesh[] = []
 
-    for (let idx = 0; idx < 81; idx++) {
-      const row = Math.floor(idx / 9)
-      const col = idx % 9
+    for (let idx = 0; idx < spec.totalCells; idx++) {
+      const row = Math.floor(idx / spec.size)
+      const col = idx % spec.size
       const altQuadrant =
-        (Math.floor(row / 3) + Math.floor(col / 3)) % 2 === 1
+        (Math.floor(row / spec.boxSize) + Math.floor(col / spec.boxSize)) %
+          2 ===
+        1
+      const baseX = getCellCoord(col, spec)
 
       const group = new THREE.Group()
-      group.position.set(getCellCoord(col), 0.22, getCellCoord(row))
+      group.position.set(baseX, 0.22, getCellCoord(row, spec))
       tilesGroup.add(group)
 
       const tileMat = new THREE.MeshStandardMaterial({
@@ -681,6 +837,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         index: idx,
         row,
         col,
+        baseX,
         altQuadrant,
         group,
         tileMesh,
@@ -695,6 +852,8 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     }
 
     const registry: SceneRegistry = {
+      boardSize,
+      spec,
       scene,
       camera,
       renderer,
@@ -711,7 +870,9 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       tiles,
       hoveredIndex: null,
       animatingCamera: true,
-      desiredCamPos: new THREE.Vector3(...PRESET_VECTORS.isometric.pos),
+      desiredCamPos: new THREE.Vector3(...PRESET_VECTORS.isometric.pos).multiplyScalar(
+        spec.camScale
+      ),
       desiredCamTarget: new THREE.Vector3(...PRESET_VECTORS.isometric.target),
       aspect: initialAspect,
       isWon: gameRef.current.isWon,
@@ -728,33 +889,36 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     // Initial full state paint before first frame
     const g = gameRef.current
     tilesGroup.visible = !g.isPaused
-    for (let idx = 0; idx < 81; idx++) {
-      const digit = g.board[idx]
-      const isSelected = g.selectedIndex === idx
-      const isSameDigit =
-        digit !== 0 &&
-        g.activeHighlightDigit !== null &&
-        digit === g.activeHighlightDigit &&
-        !isSelected
-      updateSingleTileVisuals(tiles[idx], {
-        digit,
-        notesMask: g.notes[idx],
-        isGiven: g.initialBoard[idx] !== 0,
-        isSelected,
-        isPeer: g.peerSet.has(idx),
-        isConflict: g.conflicts.has(idx),
-        isSameDigit,
-        isLastHint: g.lastHintIndex === idx,
-        isHovered: false,
-        highlightNoteDigit: g.activeHighlightDigit,
-        reliefMode: g.reliefMode,
-        isDark: isDarkRef.current,
-      })
-      tiles[idx].currentScaleY = tiles[idx].targetScaleY
-      const h = BASE_TILE_HEIGHT * tiles[idx].currentScaleY
-      tiles[idx].tileMesh.scale.y = tiles[idx].currentScaleY
-      tiles[idx].tileMesh.position.y = h / 2
-      tiles[idx].labelMesh.position.y = h + 0.006
+    if (g.board.length === spec.totalCells) {
+      for (let idx = 0; idx < spec.totalCells; idx++) {
+        const digit = g.board[idx]
+        const isSelected = g.selectedIndex === idx
+        const isSameDigit =
+          digit !== 0 &&
+          g.activeHighlightDigit !== null &&
+          digit === g.activeHighlightDigit &&
+          !isSelected
+        updateSingleTileVisuals(tiles[idx], {
+          boardSize,
+          digit,
+          notesMask: g.notes[idx] ?? 0,
+          isGiven: g.initialBoard[idx] !== 0,
+          isSelected,
+          isPeer: g.peerSet.has(idx),
+          isConflict: g.conflicts.has(idx),
+          isSameDigit,
+          isLastHint: g.lastHintIndex === idx,
+          isHovered: false,
+          highlightNoteDigit: g.activeHighlightDigit,
+          reliefMode: g.reliefMode,
+          isDark: isDarkRef.current,
+        })
+        tiles[idx].currentScaleY = tiles[idx].targetScaleY
+        const h = BASE_TILE_HEIGHT * tiles[idx].currentScaleY
+        tiles[idx].tileMesh.scale.y = tiles[idx].currentScaleY
+        tiles[idx].tileMesh.position.y = h / 2
+        tiles[idx].labelMesh.position.y = h + 0.006
+      }
     }
 
     const onControlStart = () => {
@@ -783,7 +947,14 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
     const syncSingleHoverTile = (tileIdx: number, isHovered: boolean) => {
       const currGame = gameRef.current
-      const d = currGame.board[tileIdx]
+      if (
+        currGame.boardSize !== boardSize ||
+        tileIdx < 0 ||
+        tileIdx >= tiles.length
+      ) {
+        return
+      }
+      const d = currGame.board[tileIdx] ?? 0
       const sel = currGame.selectedIndex === tileIdx
       const same =
         d !== 0 &&
@@ -791,8 +962,9 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         d === currGame.activeHighlightDigit &&
         !sel
       updateSingleTileVisuals(tiles[tileIdx], {
+        boardSize,
         digit: d,
-        notesMask: currGame.notes[tileIdx],
+        notesMask: currGame.notes[tileIdx] ?? 0,
         isGiven: currGame.initialBoard[tileIdx] !== 0,
         isSelected: sel,
         isPeer: currGame.peerSet.has(tileIdx),
@@ -847,11 +1019,9 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     canvas.addEventListener('pointerleave', onPointerLeave)
     canvas.addEventListener('pointerup', onPointerUp)
 
-    // Frame-synchronized display sizing (avoids ResizeObserver layout feedback loops)
     let lastWidth = Math.round(initialWidth)
     let lastHeight = Math.round(initialHeight)
 
-    // 60fps Animation Loop
     let rafId = 0
     let prevTime = performance.now()
 
@@ -892,12 +1062,12 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       controls.update()
 
       const tileDamp = 1 - Math.exp(-12 * delta)
-      for (let i = 0; i < 81; i++) {
+      for (let i = 0; i < tiles.length; i++) {
         const tEntry = tiles[i]
         let goalScaleY = tEntry.targetScaleY
         if (registry.isWon) {
           const wave =
-            Math.sin(elapsed * 3.4 - (tEntry.row + tEntry.col) * 0.45) * 0.09
+            Math.sin(elapsed * 3.4 - (tEntry.row + tEntry.col) * 0.38) * 0.09
           goalScaleY = Math.max(0.7, goalScaleY + wave / BASE_TILE_HEIGHT)
         }
 
@@ -907,19 +1077,19 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
             goalScaleY,
             tileDamp
           )
-          const h = BASE_TILE_HEIGHT * tEntry.currentScaleY
+          const height = BASE_TILE_HEIGHT * tEntry.currentScaleY
           tEntry.tileMesh.scale.y = tEntry.currentScaleY
-          tEntry.tileMesh.position.y = h / 2
-          tEntry.labelMesh.position.y = h + 0.006
+          tEntry.tileMesh.position.y = height / 2
+          tEntry.labelMesh.position.y = height + 0.006
         }
 
-        const baseX = getCellCoord(tEntry.col)
         if (tEntry.isConflict) {
-          tEntry.group.position.x = baseX + Math.sin(elapsed * 28) * 0.024
-        } else if (Math.abs(tEntry.group.position.x - baseX) > 0.0005) {
+          tEntry.group.position.x =
+            tEntry.baseX + Math.sin(elapsed * 28) * 0.022
+        } else if (Math.abs(tEntry.group.position.x - tEntry.baseX) > 0.0005) {
           tEntry.group.position.x = THREE.MathUtils.lerp(
             tEntry.group.position.x,
-            baseX,
+            tEntry.baseX,
             tileDamp
           )
         }
@@ -942,7 +1112,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       renderer.dispose()
       registryRef.current = null
     }
-  }, [support.ready, support.supported, support.hasWebGL2])
+  }, [support.ready, support.supported, support.hasWebGL2, boardSize])
 
   // Sync Dark / Light Theme to Scene Lights & Pedestal
   useEffect(() => {
@@ -951,7 +1121,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
     const bgHex = isDark ? '#0e1422' : '#eef2f7'
     reg.scene.background = new THREE.Color(bgHex)
-    reg.scene.fog = new THREE.Fog(bgHex, 22, 40)
+    reg.scene.fog = new THREE.Fog(bgHex, reg.spec.fogNear, reg.spec.fogFar)
     reg.ambientLight.intensity = isDark ? 0.75 : 0.94
     reg.keyLight.intensity = isDark ? 1.35 : 1.15
     reg.rimLight.color.set(isDark ? '#60a5fa' : '#93c5fd')
@@ -974,7 +1144,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       mat.map = getCoordTexture(label, isDark)
       mat.needsUpdate = true
     })
-  }, [isDark])
+  }, [isDark, boardSize])
 
   // Sync Camera Presets & Reset Trigger
   useEffect(() => {
@@ -983,10 +1153,16 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
     applyCameraPresetTarget(reg, game.cameraPreset)
   }, [game.cameraPreset, game.cameraResetTick])
 
-  // Sync 81 Sudoku Tiles State
+  // Sync Sudoku Tiles State (81 or 256)
   useEffect(() => {
     const reg = registryRef.current
-    if (!reg) return
+    if (
+      !reg ||
+      reg.boardSize !== game.boardSize ||
+      game.board.length !== reg.tiles.length
+    ) {
+      return
+    }
 
     reg.tilesGroup.visible = !game.isPaused
     reg.isWon = game.isWon
@@ -995,7 +1171,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
     if (game.isPaused) return
 
-    for (let idx = 0; idx < 81; idx++) {
+    for (let idx = 0; idx < reg.tiles.length; idx++) {
       const digit = game.board[idx]
       const isSelected = game.selectedIndex === idx
       const isSameDigit =
@@ -1005,8 +1181,9 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
         !isSelected
 
       updateSingleTileVisuals(reg.tiles[idx], {
+        boardSize: game.boardSize,
         digit,
-        notesMask: game.notes[idx],
+        notesMask: game.notes[idx] ?? 0,
         isGiven: game.initialBoard[idx] !== 0,
         isSelected,
         isPeer: game.peerSet.has(idx),
@@ -1020,6 +1197,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       })
     }
   }, [
+    game.boardSize,
     game.board,
     game.initialBoard,
     game.notes,
@@ -1036,10 +1214,15 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
   const selectedLabel = useMemo(() => {
     if (game.selectedIndex === null) return 'Ninguna'
-    const r = Math.floor(game.selectedIndex / 9)
-    const c = game.selectedIndex % 9
-    return `${ROW_LABELS[r]}${c + 1}`
-  }, [game.selectedIndex])
+    const r = Math.floor(game.selectedIndex / game.boardSize)
+    const c = game.selectedIndex % game.boardSize
+    if (game.boardSize === 16) {
+      return `F${r + 1} · C${c + 1}`
+    }
+    return `${ROW_LABELS_9[r] ?? r + 1}${c + 1}`
+  }, [game.selectedIndex, game.boardSize])
+
+  const towerRangeLabel = game.boardSize === 16 ? '1–G' : '1–9'
 
   if (support.ready && !support.supported) {
     return (
@@ -1078,10 +1261,12 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
             'pointer-events-auto backdrop-blur-md',
             !game.reliefMode && 'bg-background/85'
           )}
-          title="Alternar altura 3D proporcional al número (1 a 9)"
+          title={`Alternar altura 3D proporcional al símbolo (${towerRangeLabel})`}
         >
           <LayersIcon data-icon="inline-start" />
-          {game.reliefMode ? 'Torres 1–9: ON' : 'Torres 1–9'}
+          {game.reliefMode
+            ? `Torres ${towerRangeLabel}: ON`
+            : `Torres ${towerRangeLabel}`}
         </Button>
       </div>
 
@@ -1131,8 +1316,10 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
 
       {/* Bottom Gesture Hint */}
       <div className="pointer-events-none absolute bottom-2 left-1/2 z-10 -translate-x-1/2">
-        <span className="rounded-full border bg-background/80 px-2.5 py-0.5 text-[11px] text-muted-foreground backdrop-blur-md whitespace-nowrap">
-          Arrastra para orbitar · Pellizca para zoom · Toca una ficha
+        <span className="rounded-full border bg-background/80 px-2.5 py-0.5 text-[11px] whitespace-nowrap text-muted-foreground backdrop-blur-md">
+          {game.boardSize === 16
+            ? 'Arrastra para orbitar · Zoom/Pan · Toca una ficha (1–9, A–G)'
+            : 'Arrastra para orbitar · Pellizca para zoom · Toca una ficha'}
         </span>
       </div>
 
@@ -1140,7 +1327,7 @@ export function SudokuBoard3D({ game }: { game: SudokuGameController }) {
       {support.ready && (
         <canvas
           ref={canvasRef}
-          aria-label="Tablero de Sudoku 3D interactivo en Three.js"
+          aria-label={`Tablero de Sudoku 3D ${game.boardSize} por ${game.boardSize} interactivo en Three.js`}
           className="absolute inset-0 block h-full w-full touch-none outline-none"
         />
       )}

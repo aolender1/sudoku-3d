@@ -5,6 +5,7 @@ import {
   BoxIcon,
   CheckCircle2Icon,
   DownloadIcon,
+  Grid3x3Icon,
   KeyboardIcon,
   SmartphoneIcon,
 } from 'lucide-react'
@@ -19,20 +20,24 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { usePwaInstall } from '@/components/pwa-register'
-import { DIFFICULTY_LEVELS } from '@/lib/sudoku-js'
+import { getDifficultyLevels, type BoardSize } from '@/lib/sudoku-js'
 
 interface HelpPwaDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   initialSection?: 'pwa' | 'rules'
+  boardSize?: BoardSize
 }
 
 export function HelpPwaDialog({
   open,
   onOpenChange,
+  boardSize = 9,
 }: HelpPwaDialogProps) {
   const { canPromptNatively, isStandalone, swReady, promptInstall } =
     usePwaInstall()
+
+  const levels = getDifficultyLevels(boardSize)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -43,7 +48,8 @@ export function HelpPwaDialog({
           </DialogTitle>
           <DialogDescription>
             KUBIK combina un tablero arquitectónico 3D en Three.js con el modo
-            2D clásico e incluye el generador <code>robatron/sudoku.js</code>.
+            2D clásico, en formatos <strong>9×9</strong> y{' '}
+            <strong>16×16 Hexadoku</strong>.
           </DialogDescription>
         </DialogHeader>
 
@@ -52,24 +58,40 @@ export function HelpPwaDialog({
           <section className="flex flex-col gap-1.5 rounded-xl border bg-muted/35 p-3">
             <div className="flex items-center gap-2 font-semibold">
               <BoxIcon className="size-4 text-primary" />
-              <span>Modo 3D (Three.js) y Torres 1–9</span>
+              <span>Modo 3D (Three.js) y Torres Volumétricas</span>
             </div>
             <p className="leading-relaxed text-muted-foreground">
               Alterna en cualquier momento entre <strong>3D Three.js</strong> y{' '}
               <strong>2D Clásico</strong> conservando tu partida exacta. En 3D
               puedes orbitar arrastrando, hacer zoom con dos dedos y activar{' '}
-              <strong>Torres 1–9</strong> para que la altura física de cada ficha
-              represente su valor numérico.
+              <strong>Torres</strong> para que la altura física de cada ficha
+              refleje su valor (<code>1–9</code> o <code>1–G</code>).
             </p>
           </section>
 
-          {/* Difficulty Levels from sudoku.js */}
+          {/* 9x9 vs 16x16 Hexadoku */}
+          <section className="flex flex-col gap-1.5 rounded-xl border bg-muted/35 p-3">
+            <div className="flex items-center gap-2 font-semibold">
+              <Grid3x3Icon className="size-4 text-primary" />
+              <span>Modos 9×9 Clásico y 16×16 Hexadoku (4×4)</span>
+            </div>
+            <p className="leading-relaxed text-muted-foreground">
+              En <strong>16×16</strong> el tablero se divide en 16 cajas de{' '}
+              <strong>4×4</strong> (256 celdas) donde cada fila, columna y caja
+              contiene sin repetir los números <strong>1–9</strong> y las letras{' '}
+              <strong>A–G</strong>. Se genera con una variante con máscaras de
+              bits del algoritmo de propagación de restricciones de{' '}
+              <code>sudoku.js</code>.
+            </p>
+          </section>
+
+          {/* Difficulty Levels */}
           <section className="flex flex-col gap-2 rounded-xl border bg-muted/35 p-3">
             <span className="font-semibold">
-              6 Niveles de Dificultad (robatron/sudoku.js)
+              6 Niveles de Dificultad ({boardSize}×{boardSize})
             </span>
             <div className="grid grid-cols-2 gap-1.5 text-xs">
-              {DIFFICULTY_LEVELS.map((lvl) => (
+              {levels.map((lvl) => (
                 <div
                   key={lvl.key}
                   className="flex items-center justify-between rounded-md border bg-card px-2 py-1"
@@ -91,8 +113,10 @@ export function HelpPwaDialog({
             </div>
             <ul className="grid grid-cols-2 gap-1.5 text-xs text-muted-foreground">
               <li>
-                <strong className="font-mono text-foreground">1 – 9</strong>:
-                Colocar número / nota
+                <strong className="font-mono text-foreground">
+                  1–9 / A–G
+                </strong>
+                : Colocar símbolo / nota
               </li>
               <li>
                 <strong className="font-mono text-foreground">Flechas</strong>:

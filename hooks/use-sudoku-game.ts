@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  BLANK_CHAR,
   createSudokuGame,
-  get_candidates,
+  getCandidateMasks,
+  symbolToValue,
+  type BoardSize,
   type DifficultyKey,
 } from '@/lib/sudoku-js'
 import { playTileSound } from '@/lib/sound-fx'
@@ -29,23 +30,34 @@ export function clearNoteBit(mask: number, digit: number): number {
   return mask & ~(1 << digit)
 }
 
-export function getPeerIndices(index: number): number[] {
-  const row = Math.floor(index / 9)
-  const col = index % 9
-  const boxRow = Math.floor(row / 3) * 3
-  const boxCol = Math.floor(col / 3) * 3
+export function countBits(mask: number): number {
+  let count = 0
+  let v = mask
+  while (v !== 0) {
+    v &= v - 1
+    count++
+  }
+  return count
+}
+
+export function getPeerIndices(index: number, size: BoardSize = 9): number[] {
+  const boxSize = size === 16 ? 4 : 3
+  const row = Math.floor(index / size)
+  const col = index % size
+  const boxRow = Math.floor(row / boxSize) * boxSize
+  const boxCol = Math.floor(col / boxSize) * boxSize
   const peers = new Set<number>()
 
-  for (let i = 0; i < 9; i++) {
-    const rIdx = row * 9 + i
-    const cIdx = i * 9 + col
+  for (let i = 0; i < size; i++) {
+    const rIdx = row * size + i
+    const cIdx = i * size + col
     if (rIdx !== index) peers.add(rIdx)
     if (cIdx !== index) peers.add(cIdx)
   }
 
-  for (let r = boxRow; r < boxRow + 3; r++) {
-    for (let c = boxCol; c < boxCol + 3; c++) {
-      const bIdx = r * 9 + c
+  for (let r = boxRow; r < boxRow + boxSize; r++) {
+    for (let c = boxCol; c < boxCol + boxSize; c++) {
+      const bIdx = r * size + c
       if (bIdx !== index) peers.add(bIdx)
     }
   }
@@ -53,14 +65,28 @@ export function getPeerIndices(index: number): number[] {
   return Array.from(peers)
 }
 
-const PEERS_TABLE: number[][] = Array.from({ length: 81 }, (_, i) =>
-  getPeerIndices(i)
+const PEERS_TABLE_9: number[][] = Array.from({ length: 81 }, (_, i) =>
+  getPeerIndices(i, 9)
 )
 
-function computeConflicts(board: number[], solution: number[]): Set<number> {
-  const conflicts = new Set<number>()
+const PEERS_TABLE_16: number[][] = Array.from({ length: 256 }, (_, i) =>
+  getPeerIndices(i, 16)
+)
 
-  for (let i = 0; i < 81; i++) {
+function getPeersTable(size: BoardSize): number[][] {
+  return size === 16 ? PEERS_TABLE_16 : PEERS_TABLE_9
+}
+
+function computeConflicts(
+  board: number[],
+  solution: number[],
+  size: BoardSize
+): Set<number> {
+  const conflicts = new Set<number>()
+  const peersTable = getPeersTable(size)
+  const total = size * size
+
+  for (let i = 0; i < total; i++) {
     const val = board[i]
     if (val === 0) continue
 
@@ -68,7 +94,7 @@ function computeConflicts(board: number[], solution: number[]): Set<number> {
       conflicts.add(i)
     }
 
-    for (const peer of PEERS_TABLE[i]) {
+    for (const peer of peersTable[i]) {
       if (board[peer] === val) {
         conflicts.add(i)
         conflicts.add(peer)
@@ -85,18 +111,19 @@ export function formatDuration(seconds: number): string {
   return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`
 }
 
-// Deterministic starter fallback before client hydration generates fresh random game
 const INITIAL_PLACEHOLDER = Array.from({ length: 81 }, () => 0)
 
 export function useSudokuGame() {
   const [isReady, setIsReady] = useState(false)
   const [mode, setMode] = useState<ViewMode>('3d')
+  const [boardSize, setBoardSize] = useState<BoardSize>(9)
   const [cameraPreset, setCameraPreset] = useState<CameraPreset>('isometric')
   const [cameraResetTick, setCameraResetTick] = useState(0)
   const [reliefMode, setReliefMode] = useState(false)
   const [soundEnabled, setSoundEnabled] = useState(true)
 
   const [difficulty, setDifficulty] = useState<DifficultyKey>('medium')
+  const [givensCount, setGivensCount] = useState(53)
   const [initialBoard, setInitialBoard] = useState<number[]>(INITIAL_PLACEHOLDER)
   const [board, setBoard] = useState<number[]>(INITIAL_PLACEHOLDER)
   const [solution, setSolution] = useState<number[]>(INITIAL_PLACEHOLDER)
@@ -114,30 +141,50 @@ export function useSudokuGame() {
   const [isPaused, setIsPaused] = useState(false)
   const [isWon, setIsWon] = useState(false)
 
-  const startNewGame = useCallback((nextDifficulty: DifficultyKey) => {
-    const generated = createSudokuGame(nextDifficulty)
-    setDifficulty(nextDifficulty)
-    setInitialBoard(generated.initialBoard)
-    setBoard([...generated.initialBoard])
-    setSolution(generated.solutionBoard)
-    setNotes(Array.from({ length: 81 }, () => 0))
-    setHistory([])
-    const firstEmpty = generated.initialBoard.findIndex((v) => v === 0)
-    setSelectedIndex(firstEmpty >= 0 ? firstEmpty : 40)
-    setLastHintIndex(null)
-    setIsNotesMode(false)
-    setLockedDigit(null)
-    setMistakes(0)
-    setHintsUsed(0)
-    setElapsedSeconds(0)
-    setIsPaused(false)
-    setIsWon(false)
-    setIsReady(true)
-  }, [])
+  const boxSize: 3 | 4 = boardSize === 16 ? 4 : 3
+  const totalCells = boardSize * boardSize
+
+  const startNewGame = useCallback(
+    (nextDifficulty: DifficultyKey, nextSize?: BoardSize) => {
+      const targetSize = nextSize ?? boardSize
+      const generated = createSudokuGame(nextDifficulty, targetSize)
+      setBoardSize(targetSize)
+      setDifficulty(nextDifficulty)
+      setGivensCount(generated.givensCount)
+      setInitialBoard(generated.initialBoard)
+      setBoard([...generated.initialBoard])
+      setSolution(generated.solutionBoard)
+      setNotes(Array.from({ length: targetSize * targetSize }, () => 0))
+      setHistory([])
+      const firstEmpty = generated.initialBoard.findIndex((v) => v === 0)
+      setSelectedIndex(
+        firstEmpty >= 0 ? firstEmpty : Math.floor((targetSize * targetSize) / 2)
+      )
+      setLastHintIndex(null)
+      setIsNotesMode(false)
+      setLockedDigit(null)
+      setMistakes(0)
+      setHintsUsed(0)
+      setElapsedSeconds(0)
+      setIsPaused(false)
+      setIsWon(false)
+      setIsReady(true)
+    },
+    [boardSize]
+  )
+
+  const changeBoardSize = useCallback(
+    (nextSize: BoardSize) => {
+      if (nextSize === boardSize) return
+      startNewGame(difficulty, nextSize)
+    },
+    [boardSize, difficulty, startNewGame]
+  )
 
   useEffect(() => {
-    startNewGame('medium')
-  }, [startNewGame])
+    startNewGame('medium', 9)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Timer tick
   useEffect(() => {
@@ -149,14 +196,15 @@ export function useSudokuGame() {
   }, [isReady, isPaused, isWon])
 
   const conflicts = useMemo(
-    () => computeConflicts(board, solution),
-    [board, solution]
+    () => computeConflicts(board, solution, boardSize),
+    [board, solution, boardSize]
   )
 
   const peerSet = useMemo(() => {
     if (selectedIndex === null) return new Set<number>()
-    return new Set<number>(PEERS_TABLE[selectedIndex])
-  }, [selectedIndex])
+    const peersTable = getPeersTable(boardSize)
+    return new Set<number>(peersTable[selectedIndex] ?? [])
+  }, [selectedIndex, boardSize])
 
   const activeHighlightDigit = useMemo(() => {
     if (lockedDigit !== null) return lockedDigit
@@ -167,49 +215,43 @@ export function useSudokuGame() {
   }, [lockedDigit, selectedIndex, board])
 
   const remainingDigits = useMemo(() => {
-    const counts: Record<number, number> = {
-      1: 9,
-      2: 9,
-      3: 9,
-      4: 9,
-      5: 9,
-      6: 9,
-      7: 9,
-      8: 9,
-      9: 9,
+    const counts: Record<number, number> = {}
+    for (let d = 1; d <= boardSize; d++) {
+      counts[d] = boardSize
     }
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < totalCells; i++) {
       const val = board[i]
-      if (val >= 1 && val <= 9 && val === solution[i]) {
+      if (val >= 1 && val <= boardSize && val === solution[i]) {
         counts[val] = Math.max(0, counts[val] - 1)
       }
     }
     return counts
-  }, [board, solution])
+  }, [board, solution, boardSize, totalCells])
 
   const filledCorrectCount = useMemo(() => {
     let count = 0
-    for (let i = 0; i < 81; i++) {
+    for (let i = 0; i < totalCells; i++) {
       if (board[i] !== 0 && board[i] === solution[i]) count++
     }
     return count
-  }, [board, solution])
+  }, [board, solution, totalCells])
 
   const checkVictory = useCallback(
     (nextBoard: number[]) => {
-      for (let i = 0; i < 81; i++) {
+      for (let i = 0; i < totalCells; i++) {
         if (nextBoard[i] === 0 || nextBoard[i] !== solution[i]) {
           return false
         }
       }
       return true
     },
-    [solution]
+    [solution, totalCells]
   )
 
   const applyDigitAt = useCallback(
     (targetIndex: number, digit: number, notesModeOverride?: boolean) => {
       if (!isReady || isPaused || isWon) return
+      if (digit < 1 || digit > boardSize) return
       if (initialBoard[targetIndex] !== 0) return
 
       const useNotes = notesModeOverride ?? isNotesMode
@@ -229,7 +271,7 @@ export function useSudokuGame() {
         return
       }
 
-      // Toggle off if pressing same digit already placed
+      // Toggle off if pressing same symbol already placed
       if (board[targetIndex] === digit) {
         setHistory((prev) => [
           ...prev.slice(-60),
@@ -255,8 +297,8 @@ export function useSudokuGame() {
 
       const isCorrect = solution[targetIndex] === digit
       if (isCorrect) {
-        // Auto-clean matching pencil notes in row, column, and 3x3 box
-        for (const peer of PEERS_TABLE[targetIndex]) {
+        const peersTable = getPeersTable(boardSize)
+        for (const peer of peersTable[targetIndex]) {
           nextNotes[peer] = clearNoteBit(nextNotes[peer], digit)
         }
       } else {
@@ -278,6 +320,7 @@ export function useSudokuGame() {
       isReady,
       isPaused,
       isWon,
+      boardSize,
       initialBoard,
       isNotesMode,
       board,
@@ -298,12 +341,21 @@ export function useSudokuGame() {
         playTileSound('select', soundEnabled)
       }
     },
-    [isReady, isPaused, lockedDigit, initialBoard, isWon, applyDigitAt, soundEnabled]
+    [
+      isReady,
+      isPaused,
+      lockedDigit,
+      initialBoard,
+      isWon,
+      applyDigitAt,
+      soundEnabled,
+    ]
   )
 
   const inputDigit = useCallback(
     (digit: number) => {
       if (!isReady || isPaused || isWon) return
+      if (digit < 1 || digit > boardSize) return
       if (lockedDigit !== null) {
         setLockedDigit((prev) => (prev === digit ? null : digit))
         playTileSound('select', soundEnabled)
@@ -312,7 +364,16 @@ export function useSudokuGame() {
       if (selectedIndex === null) return
       applyDigitAt(selectedIndex, digit)
     },
-    [isReady, isPaused, isWon, lockedDigit, selectedIndex, applyDigitAt, soundEnabled]
+    [
+      isReady,
+      isPaused,
+      isWon,
+      boardSize,
+      lockedDigit,
+      selectedIndex,
+      applyDigitAt,
+      soundEnabled,
+    ]
   )
 
   const eraseCell = useCallback(() => {
@@ -331,7 +392,16 @@ export function useSudokuGame() {
     setBoard(nextBoard)
     setNotes(nextNotes)
     playTileSound('erase', soundEnabled)
-  }, [isReady, isPaused, isWon, selectedIndex, initialBoard, board, notes, soundEnabled])
+  }, [
+    isReady,
+    isPaused,
+    isWon,
+    selectedIndex,
+    initialBoard,
+    board,
+    notes,
+    soundEnabled,
+  ])
 
   const undo = useCallback(() => {
     if (!isReady || isPaused || isWon || history.length === 0) return
@@ -345,7 +415,7 @@ export function useSudokuGame() {
   const resetCurrentBoard = useCallback(() => {
     if (!isReady) return
     setBoard([...initialBoard])
-    setNotes(Array.from({ length: 81 }, () => 0))
+    setNotes(Array.from({ length: totalCells }, () => 0))
     setHistory([])
     setMistakes(0)
     setHintsUsed(0)
@@ -354,50 +424,23 @@ export function useSudokuGame() {
     setIsWon(false)
     setLastHintIndex(null)
     playTileSound('select', soundEnabled)
-  }, [isReady, initialBoard, soundEnabled])
+  }, [isReady, initialBoard, totalCells, soundEnabled])
 
-  // Uses robatron/sudoku.js get_candidates() to populate valid pencil marks!
+  // Populates valid pencil marks using Norvig constraint propagation for 9x9 & 16x16
   const fillSmartCandidates = useCallback(() => {
     if (!isReady || isPaused || isWon) return
 
-    // Build sanitized board string (using only correct/given digits so wrong guesses don't break propagation)
-    const sanitizedString = board
-      .map((val, idx) =>
-        val !== 0 && val === solution[idx] ? String(val) : BLANK_CHAR
-      )
-      .join('')
-
-    const candidateGrid = get_candidates(sanitizedString)
-    if (!candidateGrid) return
+    const candidateMasks = getCandidateMasks(board, solution, boardSize)
+    if (!candidateMasks) return
 
     setHistory((prev) => [
       ...prev.slice(-60),
       { board: [...board], notes: [...notes] },
     ])
 
-    const nextNotes = [...notes]
-    for (let r = 0; r < 9; r++) {
-      for (let c = 0; c < 9; c++) {
-        const idx = r * 9 + c
-        if (board[idx] !== 0) {
-          nextNotes[idx] = 0
-          continue
-        }
-        let mask = 0
-        const candStr = candidateGrid[r][c]
-        for (let k = 0; k < candStr.length; k++) {
-          const d = Number(candStr[k])
-          if (d >= 1 && d <= 9) {
-            mask |= 1 << d
-          }
-        }
-        nextNotes[idx] = mask
-      }
-    }
-
-    setNotes(nextNotes)
+    setNotes(candidateMasks)
     playTileSound('hint', soundEnabled)
-  }, [isReady, isPaused, isWon, board, solution, notes, soundEnabled])
+  }, [isReady, isPaused, isWon, board, solution, boardSize, notes, soundEnabled])
 
   const useHint = useCallback(() => {
     if (!isReady || isPaused || isWon) return
@@ -408,23 +451,17 @@ export function useSudokuGame() {
       initialBoard[target] !== 0 ||
       board[target] === solution[target]
     ) {
-      // Pick cell with fewest candidates from robatron/sudoku.js or first unsolved cell
-      const sanitizedString = board
-        .map((val, idx) =>
-          val !== 0 && val === solution[idx] ? String(val) : BLANK_CHAR
-        )
-        .join('')
-      const candidateGrid = get_candidates(sanitizedString)
+      const candidateMasks = getCandidateMasks(board, solution, boardSize)
 
       let bestIdx: number | null = null
-      let bestCount = 10
+      let bestCount = boardSize + 1
 
-      for (let i = 0; i < 81; i++) {
+      for (let i = 0; i < totalCells; i++) {
         if (board[i] === solution[i]) continue
-        const r = Math.floor(i / 9)
-        const c = i % 9
-        const count = candidateGrid ? candidateGrid[r][c].length : 9
-        if (count < bestCount) {
+        const count = candidateMasks
+          ? countBits(candidateMasks[i])
+          : boardSize
+        if (count > 0 && count < bestCount) {
           bestCount = count
           bestIdx = i
         }
@@ -445,7 +482,8 @@ export function useSudokuGame() {
 
     const nextNotes = [...notes]
     nextNotes[target] = 0
-    for (const peer of PEERS_TABLE[target]) {
+    const peersTable = getPeersTable(boardSize)
+    for (const peer of peersTable[target]) {
       nextNotes[peer] = clearNoteBit(nextNotes[peer], correctDigit)
     }
 
@@ -469,6 +507,8 @@ export function useSudokuGame() {
     initialBoard,
     board,
     solution,
+    boardSize,
+    totalCells,
     notes,
     checkVictory,
     soundEnabled,
@@ -479,7 +519,7 @@ export function useSudokuGame() {
     setCameraResetTick((t) => t + 1)
   }, [])
 
-  // Global keyboard controls for both 3D & 2D modes
+  // Global keyboard controls for both 9x9 (1-9) & 16x16 (1-9, A-G) in 3D & 2D
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.isComposing || e.keyCode === 229) return
@@ -494,10 +534,13 @@ export function useSudokuGame() {
       }
       if (!isReady || isPaused) return
 
-      if (e.key >= '1' && e.key <= '9') {
-        e.preventDefault()
-        inputDigit(Number(e.key))
-        return
+      if (!e.metaKey && !e.ctrlKey && !e.altKey) {
+        const symVal = symbolToValue(e.key, boardSize)
+        if (symVal > 0) {
+          e.preventDefault()
+          inputDigit(symVal)
+          return
+        }
       }
 
       if (e.key === 'Backspace' || e.key === 'Delete' || e.key === '0') {
@@ -512,7 +555,10 @@ export function useSudokuGame() {
         return
       }
 
-      if ((e.key === 'z' || e.key === 'Z') && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
+      if (
+        (e.key === 'z' || e.key === 'Z') &&
+        (e.metaKey || e.ctrlKey || !e.shiftKey)
+      ) {
         e.preventDefault()
         undo()
         return
@@ -532,25 +578,41 @@ export function useSudokuGame() {
       ) {
         e.preventDefault()
         setSelectedIndex((prev) => {
-          const cur = prev ?? 40
-          const row = Math.floor(cur / 9)
-          const col = cur % 9
-          if (e.key === 'ArrowUp') return ((row + 8) % 9) * 9 + col
-          if (e.key === 'ArrowDown') return ((row + 1) % 9) * 9 + col
-          if (e.key === 'ArrowLeft') return row * 9 + ((col + 8) % 9)
-          return row * 9 + ((col + 1) % 9)
+          const cur = prev ?? Math.floor(totalCells / 2)
+          const row = Math.floor(cur / boardSize)
+          const col = cur % boardSize
+          if (e.key === 'ArrowUp')
+            return ((row + boardSize - 1) % boardSize) * boardSize + col
+          if (e.key === 'ArrowDown')
+            return ((row + 1) % boardSize) * boardSize + col
+          if (e.key === 'ArrowLeft')
+            return row * boardSize + ((col + boardSize - 1) % boardSize)
+          return row * boardSize + ((col + 1) % boardSize)
         })
       }
     }
 
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isReady, isPaused, inputDigit, eraseCell, undo, useHint])
+  }, [
+    isReady,
+    isPaused,
+    boardSize,
+    totalCells,
+    inputDigit,
+    eraseCell,
+    undo,
+    useHint,
+  ])
 
   return {
     isReady,
     mode,
     setMode,
+    boardSize,
+    boxSize,
+    totalCells,
+    changeBoardSize,
     cameraPreset,
     cameraResetTick,
     triggerCameraPreset,
@@ -559,6 +621,7 @@ export function useSudokuGame() {
     soundEnabled,
     setSoundEnabled,
     difficulty,
+    givensCount,
     initialBoard,
     board,
     solution,

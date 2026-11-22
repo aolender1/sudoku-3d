@@ -73,6 +73,7 @@ export default function SudokuPage() {
         open={helpOpen}
         onOpenChange={setHelpOpen}
         initialSection={helpSection}
+        boardSize={game.boardSize}
       />
     </div>
   )
