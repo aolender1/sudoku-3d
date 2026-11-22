@@ -11,7 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { DIFFICULTY_LEVELS, type DifficultyKey } from '@/lib/sudoku-js'
+import { getDifficultyLevels, type DifficultyKey } from '@/lib/sudoku-js'
 import {
   formatDuration,
   type SudokuGameController,
@@ -28,15 +28,15 @@ export function VictoryDialog({ game }: { game: SudokuGameController }) {
     }
   }, [game.isWon])
 
+  const levels = getDifficultyLevels(game.boardSize)
   const currentMeta =
-    DIFFICULTY_LEVELS.find((d) => d.key === game.difficulty) ??
-    DIFFICULTY_LEVELS[1]
+    levels.find((d) => d.key === game.difficulty) ?? levels[1]
 
   const nextLevelIdx = Math.min(
-    DIFFICULTY_LEVELS.length - 1,
-    DIFFICULTY_LEVELS.findIndex((d) => d.key === game.difficulty) + 1
+    levels.length - 1,
+    levels.findIndex((d) => d.key === game.difficulty) + 1
   )
-  const nextLevel = DIFFICULTY_LEVELS[nextLevelIdx]
+  const nextLevel = levels[nextLevelIdx]
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -46,11 +46,11 @@ export function VictoryDialog({ game }: { game: SudokuGameController }) {
             <TrophyIcon className="size-6" />
           </div>
           <DialogTitle className="text-xl font-bold">
-            ¡Sudoku completado!
+            ¡Sudoku {game.boardSize}×{game.boardSize} completado!
           </DialogTitle>
           <DialogDescription>
-            Has resuelto correctamente las 81 celdas en el nivel{' '}
-            <strong>{currentMeta.label}</strong> ({currentMeta.givens} pistas).
+            Has resuelto correctamente las {game.totalCells} celdas en el nivel{' '}
+            <strong>{currentMeta.label}</strong> ({game.givensCount} pistas).
           </DialogDescription>
         </DialogHeader>
 
@@ -90,7 +90,7 @@ export function VictoryDialog({ game }: { game: SudokuGameController }) {
             <Button
               variant="secondary"
               onClick={() => {
-                game.startNewGame(game.difficulty)
+                game.startNewGame(game.difficulty, game.boardSize)
                 setOpen(false)
               }}
             >
@@ -100,7 +100,10 @@ export function VictoryDialog({ game }: { game: SudokuGameController }) {
             {nextLevel.key !== game.difficulty && (
               <Button
                 onClick={() => {
-                  game.startNewGame(nextLevel.key as DifficultyKey)
+                  game.startNewGame(
+                    nextLevel.key as DifficultyKey,
+                    game.boardSize
+                  )
                   setOpen(false)
                 }}
               >
